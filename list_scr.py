@@ -1,6 +1,8 @@
 #!/usr/bin/python3
 
 import screen
+import sys
+import math
 
 min_main_screen_height = 5
 
@@ -16,16 +18,25 @@ def truncate_str(s, lth) :
     return my_s
 
 class ListScr :
-    def __init__(self, cms = []) :
-        scr = screen.Screen()
-        cmds_list = cms + [
+    def __init__(lscr, scr, cms = [], lst=[]) :
+        lscr.scr = scr
+        lscr.curr_page = 0
+        lscr.cmds_list = cms + [
                 ('n', 'next'),
                 ('p', 'prev'),
                 ('o', 'other cmds')
                 ]
-        cmds = dict(cmds_list)
+        lscr.cmds = dict(lscr.cmds_list)
+        lscr.lst = lst
+        lscr.page = 0
+        lscr.footsize = 2
+        lscr.headsize = 2
+        lscr.title = ""
+        lscr.subtitle = ""
+        lscr.head_info = ""
+        lscr.footer_pos = 0
 
-    def list_error(scr, fnname, errname, sev) :
+    def list_error(lscr, fnname, errname, sev) :
         """
             Error function for list_scr. Entries
             scr: screen
@@ -37,22 +48,26 @@ class ListScr :
             err_type = 'Debug'
         elif sev == 1 :
             err_type = 'Info'
-        else :
+        elif sev == 2 :
             err_type = 'Warn'
-            user_input = scr.scr_error(errname, fnname, 'list_scr', err_type)
+        else :
+            err_type = 'Critical'
+        user_input = lscr.scr.scr_error(errname, fnname, 'list_scr', err_type)
+        if sev > 2 :
+            sys.exit('list_scr: critical error encountered... exiting.')
         return user_input
 
-    def trim_list(scr, footsize, headsize, l) :
+    def trim_list(lscr) :
         """
             Returns a list of list of strings made from a list of strings l
             with added item number.
-            scr - screen in which the list is to be displayed
-            footsize - number of rows occupied by the footer function
-            headsize - number of rows occupied by the header function
         """
+        l = lscr.lst
         ret_list = []
-        ht = scr.h
-        wd = scr.w
+        ht = lscr.scr.h
+        wd = lscr.scr.w
+        footsize = lscr.footsize
+        headsize = lscr.headsize
 
         max_id = len(l)
         len_max_id = 0
@@ -64,7 +79,7 @@ class ListScr :
         available_ht = ht - footsize - headsize
 
         if available_ht < min_main_screen_height or available_wd <= 3:
-            list_error(scr, 'trim_list', 'Window too small', 2)
+            lscr.list_error('trim_list', 'Window too small', 2)
         else :
             no_in_page = available_ht - 2
             list_id = 0
@@ -82,31 +97,130 @@ class ListScr :
                 ret_list.append(curr_list)
         return ret_list
 
-    def create_header(scr, title, subtitle = "", info = "") :
-        scr_wd = scr.w
+    def create_header(lscr) :
+        scr_wd = lscr.scr.w
+        title = lscr.title
+        subtitle = lscr.subtitle
+        info = lscr.info
 
-        head_win = scr.define_win(0, 0, 2, scr_wd)
-        scr.win_clear(head_win)
+        head_win = lscr.scr.define_win(0, 0, 2, scr_wd)
+        lscr.scr.win_clear(head_win)
         linf = len(info)
         start_pt = max(scr_wd - linf, 0)
-        scr.win_prst(head_win, 0, start_pt, info, min(linf, scr_wd))
-        scr.win_center_prst(head_win, 0, title)
-        scr.win_center_prst(head_win, 1, subtitle)
-        return scr
-    # ==Continue==
+        lscr.scr.win_prst(head_win, 0, start_pt, info, min(linf, scr_wd))
+        lscr.scr.win_center_prst(head_win, 0, title)
+        lscr.scr.win_center_prst(head_win, 1, subtitle)
+        return None
 
+    def create_footer(lscr) :
+        scr_wd = lscr.scr.w
+        if scr_wd <= 20 :
+            lscr.list_error("create_footer", "screen width too small", 3)
+        cmdwd = max((scr_wd // 3), 10)
+        ntabs = scr_wd // cmdwd
+        perpage = 2 * ntabs
+        ncmds = len(lscr.cmds_list)
+        npages = math.ceil(ncmds / perpage)
+        if lscr.footer_pos >= ncmds :
+            lscr.list_error("create_footer", "incorrect footer position", 1)
+            lscr.footer_pos = 0
+        pos = lscr.footer_pos
+        lst_to_show = lscr.cmds_list[pos :
+                min((pos + perpage), ncmds) ]
+        lst_to_show_str = []
+        for p in lst_to_show :
+            lst_to_show_str.append(p[0] + ':' + p[1])
+        lst_to_show_str = lst_to_show_str + (2*ntabs -
+                len(lst_to_show_str))*[' ']
+        for i in [-2, -1] :
+            r = lscr.scr.h + i
+            for t in range(ntabs) :
+                c = t * cmdwd
+                lscr.scr.prst(r, c, lst_to_show_str[(i+2)*ntabs + t], cmdwd)
+        return perpage
+
+    def disp_list(lscr) :
+        ll = lscr.trim_list()
+        if len(ll) > 0 :
+            lcurr = ll[lscr.curr_page]
+            offset_head = lscr.headsize + 1
+            width = lscr.scr.w
+            for i in range(len(lcurr)) :
+                r = offset_head + i
+                c = 0
+                lscr.scr.prst(r, c, lcurr[i], width)
+        else :
+            lscr.list_error('disp_list', 'empty list', 1)
+        return None
+
+    def list_interact(lscr, prompt) :
+        selection = 0
+        stay = True
+        lenlist = len(lscr.lst)
+        lenopts = len(lscr.cmds_list)
+        lscr.curr_page = 0
+        if lenlist == 0 :
+            cmd = 'EmptyList'
+            stay = False
+        while stay :
+            no_pages = len(lscr.trim_list())
+            lscr.info = str(lscr.curr_page + 1) + '/' + str(no_pages)
+            lscr.scr.clear()
+            lscr.create_header()
+            opt_pg = lscr.create_footer()
+            lscr.disp_list()
+            lscr.scr.display()
+            ans = input(prompt)
+
+            if ans == 'n' :
+                if lscr.curr_page < no_pages - 1 :
+                    lscr.curr_page += 1
+            elif ans == 'p' :
+                if lscr.curr_page > 0 :
+                    lscr.curr_page -= 1
+            elif ans == 'o' :
+                lscr.footer_pos += opt_pg
+                if lscr.footer_pos >= lenopts :
+                    lscr.footer_pos = 0
+            elif ans.isnumeric() :
+                chosen = int(ans) - 1
+                if chosen < 0 or chosen >= lenlist :
+                    lscr.list_error("list_interact",
+                            "Invalid choice. Please select again.", 1)
+                else :
+                    selection = chosen
+                    cmd = "selected"
+                    stay = False
+            else :
+                cmd = ans
+                stay = False
+        return (cmd, selection)
 
 if __name__ == '__main__' :
-    lscr = ListScr(4, 6)
-    my_l1 = list(range(999999, 1000016))
+    s = screen.Screen(15, 40)
+    lscr = ListScr(s)
+    lscr.scr.h = 20
+    lscr.scr.w = 45
+    lscr.scr.setscreen()
+    lscr.title = "Expenditure"
+    lscr.subtitle = "daily"
+    lscr.info = "2/3"
+    lscr.cmds_list.append(('d', 'delete'))
+    lscr.cmds_list.append(('a', 'add'))
+    lscr.cmds_list.append(('c', 'compute'))
+    lscr.cmds_list.append(('s', 'select'))
+    my_l1 = list(range(999999, 1000116))
     my_l = []
     for x in my_l1 :
         my_l.append(str(x))
-    my_l = ['      a'] + my_l
-    trimmed_list = trim_list(scr, 2, 2, my_l)
-    for l in trimmed_list :
-        for a in l :
-            print(a)
-        print(10*'-')
-    scr = create_header(scr, "Expend", "daily", "2/3")
-    scr.display()
+    lscr.lst = my_l
+    lscr.create_header()
+    lscr.create_footer()
+    lscr.scr.display()
+    lscr.disp_list()
+    lscr.scr.display()
+    c, s = lscr.list_interact('LSCR> ')
+    if c == "selected" :
+        print(lscr.lst[s], s)
+    else :
+        print(c, s)

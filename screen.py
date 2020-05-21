@@ -1,4 +1,5 @@
 #!/usr/bin/python3
+
 import time
 
 def scr_delay(t_in_sec) :

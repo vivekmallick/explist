@@ -120,12 +120,12 @@ def strtolf(scr, s) :
                 lfprp.append((tree_decode(scr, prppair[0]), tree_decode(scr, prppair[1])))
     return (lfid, lfstr, lfprp)
 
-class Tree() :
-    def __init__(cls) :
+class Tree :
+    def __init__(cls, scr) :
         cls.parent = 'p'
         cls.t = [(0, 'r', [(cls.parent, str(0))])]
         cls.cid = 0 # cid = current id
-        cls.s = screen.Screen(15, 40)
+        cls.s = scr
 
     def add(cls, par, st, prps) :
         newprps = [(cls.parent, str(par))]
@@ -141,17 +141,32 @@ class Tree() :
             else :
                 found_ind = True
         cls.t.append((i, st, newprps))
+        return i
 
     def __str__(cls) :
         tv = ''
         for lf in cls.t :
             tv += str(lf[0]) + ': ' + lf[1]
             tv += ', parent = ' + lf[2][0][1]
+            tv += ', props: ' + str(lf[2][1:])
             tv += '\n'
         return tv
 
     def __repr__(cls) :
-        return cls.__str__()
+        tv = ''
+        for lf in cls.t :
+            tv += str(lf[0]) + ': ' + lf[1]
+            tv += ', props ---- '
+            for p in lf[2] :
+                tv += '[' + p[0] + ' = ' + p[1] + ']'
+            tv += '\n'
+        return tv
+
+    def name(cls) :
+        return cls.t[cls.loc_of_id(cls.cid)][1]
+
+    def name_at_id(cls, i) :
+        return cls.t[cls.loc_of_id(i)][1]
 
     def id_at_loc(cls, l) :
         return cls.t[l][0]
@@ -166,9 +181,26 @@ class Tree() :
                 found_id = True
             l += 1
         if not found_id :
-            tree_error_screen(cls.s, 'loc_of_id', 'invalid id', 3)
+            tree_error_screen(cls.s, 'loc_of_id', 'invalid id ' + str(i), 3)
             loc = cls.cid
         return loc
+
+    def mod_name_at_id(cls, i, new_name) :
+        l = cls.loc_of_id(i)
+        id_at_i, name_at_i, prop_at_i = cls.t[l]
+        if id_at_i == i :
+            new_obj = (id_at_i, new_name, prop_at_i)
+            cls.t[l] = new_obj
+        else :
+            tree_error_screen(cls.s, 'mod_name_at_id',
+                    'unexplained_error. critical bug', 3)
+
+    def mod_name(cls, new_name) :
+        cls.mod_name_at_id(cls.cid, new_name)
+
+    def rmlf(cls, i) :
+        l = cls.loc_of_id(i)
+        del cls.t[l]
 
     def value_property_at_loc(cls, loc, key) :
         prps = cls.t[loc][2]
@@ -183,6 +215,80 @@ class Tree() :
 
     def value_property(cls, key) :
         return cls.value_property_at_id(cls.cid, key)
+
+    def add_property_at_loc(cls, loc, key, value, inform_key_repeat = True) :
+        loc_id = cls.t[loc][0]
+        loc_st = cls.t[loc][1]
+        prps   = cls.t[loc][2]
+        success = False
+        repeated_key = False
+        for prp in prps :
+            if prp[0] == key :
+                repeated_key = True
+        if repeated_key :
+            if inform_key_repeat :
+                tree_error_screen(cls.s, "add_property_at_loc", "property" +
+                        " already exists. no changes made at id " +
+                        str(loc_id) + ": " + loc_st + ".", 1)
+        else :
+            prps.append((key, value))
+            cls.t[loc] = (loc_id, loc_st, prps)
+            success = True
+        return success
+
+    def add_property_at_id(cls, i, key, value, inform_key_repeat = True) :
+        return cls.add_property_at_loc(cls.loc_of_id(i), key, value,
+                inform_key_repeat)
+
+    def add_property(cls, key, value, inform_key_repeat = True) :
+        return add_property_at_id(cls.cid, key, value, inform_key_repeat)
+
+    def mod_property_at_loc(cls, l, key, value) :
+        l_id = cls.t[l][0]
+        l_st = cls.t[l][1]
+        l_pr = cls.t[l][2]
+        found_key = False
+        pos_key = -1
+        while (not found_key) and pos_key < len(l_pr) - 1 :
+            pos_key += 1
+            if l_pr[pos_key][0] == key :
+                found_key = True
+        if found_key :
+            l_pr[pos_key] = (key, value)
+            cls.t[l] = (l_id, l_st, l_pr)
+        else :
+            tree_error_screen(cls.s, "mod_property_at_loc", "property " +
+                    key + " not found at id " + str(l_id) + ": " + l_st +
+                    ".", 1)
+        return found_key
+
+    def mod_property_at_id(cls, i, key, value) :
+        return cls.mod_property_at_loc(cls.loc_of_id(i), key, value)
+
+    def mod_property(cls, key, value) :
+        return cls.mod_property_at_id(cls.cid, key, value)
+
+    def add_or_mod_property_at_loc(cls, l, key, value) :
+        succ = cls.add_property_at_loc(l, key, value, inform_key_repeat =
+                False)
+        if not succ :
+            succ = cls.mod_property_at_loc(l, key, value)
+        return succ
+
+    def add_or_mod_property_at_id(cls, i, key, value) :
+        return cls.add_or_mod_property_at_loc(cls.loc_of_id(i), key, value)
+
+    def add_or_mod_property(cls, key, value) :
+        return cls.add_or_mod_property_at_id(cls.cid, key, value)
+
+    def list_id_prop_eq_val(cls, key, value) :
+        lpv = []
+        for loc in range(len(cls.t)) :
+            val_at_loc = cls.value_property_at_loc(loc, key)
+            if val_at_loc == value :
+                lpv.append(cls.id_at_loc(loc))
+        return lpv
+        # Continue from here
 
     def parentleaf_at_loc(cls, loc) :
         return int(cls.value_property_at_loc(loc, cls.parent))
@@ -219,8 +325,8 @@ class Tree() :
         cls.cid = 0
 
 if __name__ == '__main__' :
-    tt = Tree()
-    scr = tt.s
+    scr = screen.Screen(15, 40)
+    tt = Tree(scr)
     print('Checking encode/decode')
     print('======================')
     text = '12:treentry:p-23$i-23$o-12'
@@ -265,9 +371,39 @@ if __name__ == '__main__' :
     print('Loading file', end='...')
     tt.load_from_file('treedata.txt')
     print('done')
-    print(tt)
+    print(tt.__repr__())
 
     print('Checking value-property')
     print('=======================')
     print(tt.value_property_at_id(3, 'e'))
     print(tt.value_property_at_id(4, 'i'))
+
+    print('Checking add-property')
+    print('=====================')
+    tt.add_property_at_id(3, 'i', 'Hello')
+    tt.add_property_at_id(4, 'i', 'Hello')
+    print(tt.__repr__())
+
+    print('Checking mod-property')
+    print('=====================')
+    tt.mod_property_at_id(0, 'i', 'Hello')
+    tt.mod_property_at_id(4, 'i', 'Hello')
+    print(tt.__repr__())
+
+    print('Checking add-or-mod-property')
+    print('============================')
+    tt.add_or_mod_property_at_id(4, 'i', 'Cards')
+    tt.add_or_mod_property_at_id(2, 'i', 'Cards')
+    print(tt.__repr__())
+    
+    print('Checking name and list_id_prop_eq_val')
+    print('=====================================')
+    lt = tt.list_id_prop_eq_val('i', 'Cards')
+    print(lt)
+    for i in lt :
+        print(tt.name_at_id(i), end=' ')
+    print()
+    for i in lt:
+        tt.move_to_id(i)
+        print(tt.name(), end=' ')
+    print()
